@@ -1351,17 +1351,12 @@ const WaveSystem = (() => {
         spawnTimer = CONFIG.BASE_SPAWN_INTERVAL;
       }
     } else {
-      if (enemies.length === 0 && waveEnemiesKilled >= CONFIG.ENEMIES_PER_WAVE) {
+      // 敵を全滅させたら次のウェーブへ
+      if (enemies.length === 0) {
         currentWave++;
         waveInProgress = false;
         spawnTimer = 60;
       }
-    }
-  }
-
-  function onEnemyKilled() {
-    if (waveInProgress) {
-      waveEnemiesKilled++;
     }
   }
 
@@ -1373,7 +1368,7 @@ const WaveSystem = (() => {
     waveInProgress = false;
   }
 
-  return { update, reset, difficulty, isStageComplete, onEnemyKilled, get currentWave() { return currentWave; } };
+  return { update, reset, difficulty, isStageComplete, get currentWave() { return currentWave; } };
 })();
 
 function spawnEnemy(type, x, y, behaviorFn) {
@@ -1876,7 +1871,6 @@ function doCollisions() {
         if (!enemy.alive) {
           ScoreSystem.addScore(enemy.score, enemy.x, enemy.y);
           ScoreSystem.incrementCombo();
-          WaveSystem.onEnemyKilled();
         }
         break;
       }
