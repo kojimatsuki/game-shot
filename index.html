@@ -120,12 +120,12 @@ const CONFIG = {
 
   // Bullets
   PLAYER_BULLET_SPEED: 12,
-  ENEMY_BULLET_SPEED: 5,
+  ENEMY_BULLET_SPEED: 3,
   MAX_PLAYER_BULLETS: 100,
   MAX_ENEMY_BULLETS: 200,
 
   // Enemies
-  MAX_ENEMIES: 35,
+  MAX_ENEMIES: 20,
 
   // Particles
   MAX_PARTICLES: 500,
@@ -160,9 +160,13 @@ const CONFIG = {
   GRID_SCROLL_SPEED: 2,
 
   // Difficulty
-  BASE_SPAWN_INTERVAL: 60,
-  MIN_SPAWN_INTERVAL: 20,
+  BASE_SPAWN_INTERVAL: 90,
+  MIN_SPAWN_INTERVAL: 40,
   DIFFICULTY_RAMP_TIME: 3600,
+
+  // Stage Clear
+  TOTAL_WAVES: 10,
+  ENEMIES_PER_WAVE: 5,
 };
 
 // ============================================================================
@@ -322,7 +326,6 @@ const Input = (() => {
   });
 
   const canvas = document.getElementById('game');
-  console.log('Canvas element:', canvas);
 
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
@@ -333,7 +336,6 @@ const Input = (() => {
     touchActive = true;
     touchDeltaX = 0;
     touchTapped = true;
-    console.log('Touch detected, touchTapped set to true');
   });
 
   canvas.addEventListener('touchmove', (e) => {
@@ -361,13 +363,11 @@ const Input = (() => {
   canvas.addEventListener('click', (e) => {
     e.preventDefault();
     touchTapped = true;
-    console.log('Click detected, touchTapped set to true');
   });
 
   canvas.addEventListener('mousedown', (e) => {
     e.preventDefault();
     touchTapped = true;
-    console.log('Mousedown detected, touchTapped set to true');
   });
 
   return {
@@ -750,29 +750,29 @@ class Enemy {
     if (type === 'drone') {
       this.width = 16;
       this.height = 16;
-      this.hp = 2;
-      this.maxHp = 2;
+      this.hp = 1;
+      this.maxHp = 1;
       this.vy = 2;
       this.score = 100;
-      this.fireRate = 120;
+      this.fireRate = 180;
       this.color = CONFIG.COLOR_MAGENTA;
     } else if (type === 'fighter') {
       this.width = 24;
       this.height = 24;
-      this.hp = 5;
-      this.maxHp = 5;
+      this.hp = 3;
+      this.maxHp = 3;
       this.vy = 1.5;
       this.score = 300;
-      this.fireRate = 70;
+      this.fireRate = 120;
       this.color = CONFIG.COLOR_PURPLE;
     } else if (type === 'heavy') {
       this.width = 36;
       this.height = 36;
-      this.hp = 12;
-      this.maxHp = 12;
+      this.hp = 8;
+      this.maxHp = 8;
       this.vy = 1;
       this.score = 1000;
-      this.fireRate = 50;
+      this.fireRate = 90;
       this.color = CONFIG.COLOR_RED;
     }
 
@@ -1255,9 +1255,16 @@ function drawBackground(ctx) {
 const WaveSystem = (() => {
   let spawnTimer = 0;
   let gameTime = 0;
+  let currentWave = 0;
+  let waveEnemiesKilled = 0;
+  let waveInProgress = false;
 
   function difficulty() {
     return Math.min(1, gameTime / CONFIG.DIFFICULTY_RAMP_TIME);
+  }
+
+  function isStageComplete() {
+    return currentWave >= CONFIG.TOTAL_WAVES;
   }
 
   function behaviorStraight(enemy, dt) {
@@ -1331,27 +1338,42 @@ const WaveSystem = (() => {
 
   function update(dt) {
     gameTime += dt;
-    spawnTimer -= dt;
 
-    if (spawnTimer <= 0 && enemies.length < CONFIG.MAX_ENEMIES) {
-      const interval = lerp(CONFIG.BASE_SPAWN_INTERVAL, CONFIG.MIN_SPAWN_INTERVAL, difficulty());
-      spawnTimer = interval;
+    if (isStageComplete()) return;
 
-      const d = difficulty();
-      const wavePool = d < 0.3 ? waves.slice(0, 3) :
-                       d < 0.6 ? waves.slice(0, 5) :
-                       waves;
-      const wave = wavePool[randInt(0, wavePool.length - 1)];
-      wave();
+    if (!waveInProgress) {
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        const wave = waves[currentWave % waves.length];
+        wave();
+        waveInProgress = true;
+        waveEnemiesKilled = 0;
+        spawnTimer = CONFIG.BASE_SPAWN_INTERVAL;
+      }
+    } else {
+      if (enemies.length === 0 && waveEnemiesKilled >= CONFIG.ENEMIES_PER_WAVE) {
+        currentWave++;
+        waveInProgress = false;
+        spawnTimer = 60;
+      }
+    }
+  }
+
+  function onEnemyKilled() {
+    if (waveInProgress) {
+      waveEnemiesKilled++;
     }
   }
 
   function reset() {
     spawnTimer = CONFIG.BASE_SPAWN_INTERVAL;
     gameTime = 0;
+    currentWave = 0;
+    waveEnemiesKilled = 0;
+    waveInProgress = false;
   }
 
-  return { update, reset, difficulty };
+  return { update, reset, difficulty, isStageComplete, onEnemyKilled, get currentWave() { return currentWave; } };
 })();
 
 function spawnEnemy(type, x, y, behaviorFn) {
@@ -1485,6 +1507,14 @@ function drawHUD(ctx) {
   ctx.fillText(formatScore(ScoreSystem.displayScore), CONFIG.WIDTH / 2, 12);
   ctx.shadowBlur = 0;
 
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = CONFIG.COLOR_CYAN;
+  ctx.shadowColor = CONFIG.COLOR_CYAN;
+  ctx.shadowBlur = 8;
+  ctx.fillText(`WAVE ${WaveSystem.currentWave + 1}/${CONFIG.TOTAL_WAVES}`, 12, 12);
+  ctx.shadowBlur = 0;
+
   if (ScoreSystem.combo > 0) {
     const comboX = CONFIG.WIDTH - 25;
     const comboY = 12;
@@ -1576,6 +1606,9 @@ const GameState = (() => {
       case 'gameover':
         updateGameOver(dt);
         break;
+      case 'stageclear':
+        updateStageClear(dt);
+        break;
     }
   }
 
@@ -1593,13 +1626,16 @@ const GameState = (() => {
         drawPlaying(ctx);
         drawGameOver(ctx);
         break;
+      case 'stageclear':
+        drawPlaying(ctx);
+        drawStageClear(ctx);
+        break;
     }
   }
 
   function updateTitle(dt) {
     updateBackground(1);
     if (Input.space || Input.tapped) {
-      console.log('Starting game from title screen');
       Input.consume('Space');
       Input.consumeTap();
       Audio.init();
@@ -1701,6 +1737,63 @@ const GameState = (() => {
     ctx.restore();
   }
 
+  function updateStageClear(dt) {
+    if (stateTimer > 100 && (Input.space || Input.tapped)) {
+      Input.consume('Space');
+      Input.consumeTap();
+      Audio.menuSelect();
+      setState('title');
+    }
+  }
+
+  function drawStageClear(ctx) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.shadowColor = CONFIG.COLOR_CYAN;
+    ctx.shadowBlur = 25;
+    ctx.font = 'bold 38px monospace';
+    ctx.fillStyle = CONFIG.COLOR_CYAN;
+    ctx.fillText('STAGE CLEAR!', CONFIG.WIDTH/2, CONFIG.HEIGHT/2 - 60);
+
+    ctx.shadowBlur = 0;
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = CONFIG.COLOR_GOLD;
+    ctx.shadowColor = CONFIG.COLOR_GOLD;
+    ctx.shadowBlur = 10;
+    ctx.fillText(`SCORE: ${formatScore(ScoreSystem.score)}`, CONFIG.WIDTH/2, CONFIG.HEIGHT/2 + 10);
+    ctx.shadowBlur = 0;
+
+    const highScore = parseInt(localStorage.getItem('cyberShooterHigh') || '0');
+    if (ScoreSystem.score > highScore) {
+      localStorage.setItem('cyberShooterHigh', ScoreSystem.score.toString());
+      ctx.font = 'bold 16px monospace';
+      ctx.fillStyle = CONFIG.COLOR_MAGENTA;
+      ctx.shadowColor = CONFIG.COLOR_MAGENTA;
+      ctx.shadowBlur = 12;
+      ctx.fillText('★ NEW HIGH SCORE! ★', CONFIG.WIDTH/2, CONFIG.HEIGHT/2 + 50);
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText(`HI-SCORE: ${formatScore(highScore)}`, CONFIG.WIDTH/2, CONFIG.HEIGHT/2 + 50);
+    }
+
+    if (stateTimer > 100) {
+      if (Math.floor(stateTimer / 35) % 2 === 0) {
+        ctx.font = '14px monospace';
+        ctx.fillStyle = CONFIG.COLOR_WHITE;
+        ctx.fillText('TAP TO CONTINUE', CONFIG.WIDTH/2, CONFIG.HEIGHT/2 + 110);
+      }
+    }
+
+    ctx.restore();
+  }
+
   return { update, draw, setState, get state() { return state; } };
 })();
 
@@ -1731,6 +1824,13 @@ function updatePlaying(dt) {
   player.update(dt);
 
   WaveSystem.update(dt);
+
+  if (WaveSystem.isStageComplete() && enemies.length === 0) {
+    setTimeout(() => {
+      GameState.setState('stageclear');
+    }, 1000);
+    return;
+  }
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     enemies[i].update(dt);
@@ -1776,6 +1876,7 @@ function doCollisions() {
         if (!enemy.alive) {
           ScoreSystem.addScore(enemy.score, enemy.x, enemy.y);
           ScoreSystem.incrementCombo();
+          WaveSystem.onEnemyKilled();
         }
         break;
       }
