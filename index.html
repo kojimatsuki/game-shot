@@ -322,6 +322,7 @@ const Input = (() => {
   });
 
   const canvas = document.getElementById('game');
+  console.log('Canvas element:', canvas);
 
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
@@ -332,6 +333,7 @@ const Input = (() => {
     touchActive = true;
     touchDeltaX = 0;
     touchTapped = true;
+    console.log('Touch detected, touchTapped set to true');
   });
 
   canvas.addEventListener('touchmove', (e) => {
@@ -354,6 +356,18 @@ const Input = (() => {
     e.preventDefault();
     touchActive = false;
     touchDeltaX = 0;
+  });
+
+  canvas.addEventListener('click', (e) => {
+    e.preventDefault();
+    touchTapped = true;
+    console.log('Click detected, touchTapped set to true');
+  });
+
+  canvas.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    touchTapped = true;
+    console.log('Mousedown detected, touchTapped set to true');
   });
 
   return {
@@ -1585,6 +1599,7 @@ const GameState = (() => {
   function updateTitle(dt) {
     updateBackground(1);
     if (Input.space || Input.tapped) {
+      console.log('Starting game from title screen');
       Input.consume('Space');
       Input.consumeTap();
       Audio.init();
